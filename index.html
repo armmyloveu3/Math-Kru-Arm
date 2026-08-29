@@ -860,6 +860,9 @@
             <li>คัดลอกลิงก์ Web app URL (ลงท้ายด้วย <code>/exec</code>) มาวางในช่องด้านล่าง แล้วกด "บันทึกการเชื่อมต่อ"</li>
             <li>กด "ทดสอบการเชื่อมต่อ" เพื่อส่งแถวทดสอบ แล้วเปิด Google Sheet ดูว่ามีแถวใหม่ขึ้นหรือไม่</li>
           </ol>
+          <div class="pt-1.5 mt-1.5 border-t border-indigo-200/70 text-indigo-800">
+            <b>ตั้งค่าไว้อยู่แล้ว?</b> ให้กลับไปวางโค้ดใหม่ทับของเดิม แล้วกด <b>Deploy → Manage deployments → ไอคอนดินสอ → เลือกเวอร์ชันใหม่ → Deploy</b> อีกครั้ง เพื่อให้ระบบซิงค์ประวัติการทำข้อสอบข้ามเครื่องได้ (โค้ดเวอร์ชันนี้เพิ่มคอลัมน์ "AnswersSnapshot")
+          </div>
         </div>
 
         <div>
@@ -886,10 +889,10 @@
               <i class="fa-regular fa-copy"></i> คัดลอกโค้ด
             </button>
           </div>
-          <textarea id="appsScriptCodeBlock" readonly rows="16" class="w-full p-2 rounded-lg bg-slate-800 text-emerald-400 font-mono text-[10px] leading-relaxed">function getSheet_() {
+          <textarea id="appsScriptCodeBlock" readonly rows="18" class="w-full p-2 rounded-lg bg-slate-800 text-emerald-400 font-mono text-[10px] leading-relaxed">function getSheet_() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['Timestamp', 'Student_ID', 'Student_Name', 'Room', 'No', 'Mode', 'Category', 'Score', 'Total', 'Accuracy(%)', 'Num', 'Ops', 'Frac', 'Meas', 'Geo', 'Data', 'Feedback']);
+    sheet.appendRow(['Timestamp', 'Student_ID', 'Student_Name', 'Room', 'No', 'Mode', 'Category', 'Score', 'Total', 'Accuracy(%)', 'Num', 'Ops', 'Frac', 'Meas', 'Geo', 'Data', 'Feedback', 'AnswersSnapshot']);
   }
   return sheet;
 }
@@ -908,7 +911,7 @@ function doPost(e) {
       new Date(), data.student_id || '', data.student_name || '', data.room || '', data.no || '',
       data.mode || '', data.category || '', data.score, data.total, data.accuracy,
       sc.num || '-', sc.ops || '-', sc.frac || '-', sc.meas || '-', sc.geo || '-', sc.data || '-',
-      data.feedback || ''
+      data.feedback || '', JSON.stringify(data.answers_snapshot || {})
     ]);
     return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
@@ -926,6 +929,12 @@ function doGet(e) {
       headers.forEach(function(h, i) { obj[h] = row[i]; });
       return obj;
     });
+    // Optional ?sid=... filters to just that student's rows, so a device
+    // restoring one student's history doesn't have to download everyone's.
+    var sid = e.parameter && e.parameter.sid;
+    if (sid) {
+      rows = rows.filter(function(r) { return String(r.Student_ID) === String(sid); });
+    }
     return ContentService.createTextOutput(JSON.stringify({ status: 'success', rows: rows })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
@@ -1127,6 +1136,65 @@ function doGet(e) {
         const saved = localStorage.getItem('nt_student_prog_' + sid);
         if (saved) currentStudentProgress = JSON.parse(saved);
       } catch (e) { console.warn(e); }
+    }
+
+    // Pulls this student's latest full answer snapshot back from Google Sheets
+    // and merges it into the local completedQuestions map, so opening the same
+    // Magic Link on a brand-new device restores their answer history, radar
+    // chart, and "ย้อนดูข้อสอบที่เคยทำ" screen — not just their aggregate score.
+    // Runs quietly in the background; if it's not configured or fails, the
+    // student just keeps seeing whatever is already on this device.
+    async function syncStudentHistoryFromCloud() {
+      if (!googleSheetWebhook || !currentStudent) return;
+      try {
+        const res = await fetch(googleSheetWebhook + '?sid=' + encodeURIComponent(currentStudent.id) + '&t=' + Date.now());
+        const json = await res.json();
+        if (json.status !== 'success' || !Array.isArray(json.rows) || json.rows.length === 0) return;
+
+        // Find this student's most recent submission (it carries the fullest
+        // cumulative snapshot at that point in time, from whichever device sent it).
+        let latestRow = null;
+        let latestTime = -1;
+        json.rows.forEach(row => {
+          const t = new Date(row.Timestamp).getTime();
+          if (!isNaN(t) && t > latestTime) { latestTime = t; latestRow = row; }
+        });
+        if (!latestRow || !latestRow.AnswersSnapshot) return;
+
+        let remoteMap;
+        try { remoteMap = JSON.parse(latestRow.AnswersSnapshot); } catch (e) { return; }
+
+        // Merge per-question, keeping whichever side answered that question most
+        // recently — so this device's own not-yet-synced answers aren't lost.
+        let mergedCount = 0;
+        Object.keys(remoteMap).forEach(qid => {
+          const remoteEntry = remoteMap[qid];
+          const localEntry = currentStudentProgress.completedQuestions[qid];
+          if (!localEntry || (remoteEntry.timestamp || 0) > (localEntry.timestamp || 0)) {
+            currentStudentProgress.completedQuestions[qid] = remoteEntry;
+            mergedCount++;
+          }
+        });
+
+        if (mergedCount > 0) {
+          try {
+            localStorage.setItem('nt_student_prog_' + currentStudent.id, JSON.stringify(currentStudentProgress));
+          } catch (e) {}
+
+          // Refresh whichever student screen is currently on-screen so the
+          // restored history shows up immediately without a manual reload.
+          updateStudentStats();
+          ['home', 'analytics', 'history'].forEach(v => {
+            const el = document.getElementById('view-student-' + v);
+            if (!el || el.classList.contains('hidden')) return;
+            if (v === 'home') updateStudentRadarChart();
+            else if (v === 'analytics') renderStudentAnalyticsCharts();
+            else if (v === 'history') filterMyHistory();
+          });
+        }
+      } catch (err) {
+        console.log('Cloud history sync skipped:', err);
+      }
     }
 
     let currentStudentProgress = freshStudentProgress();
@@ -2241,6 +2309,11 @@ function doGet(e) {
       updateStudentRadarChart();
       renderStudentTopics();
       switchStudentView('home');
+
+      // Fire-and-forget: restores this student's full history from Google
+      // Sheets if it's ahead of what's on this device (e.g. first time opening
+      // the Magic Link on a new phone/computer).
+      syncStudentHistoryFromCloud();
     }
 
     function switchStudentView(view) {
@@ -2743,7 +2816,11 @@ function doGet(e) {
           score: correct,
           total: total,
           accuracy: acc,
-          scores: getStudentCompetencyScores()
+          scores: getStudentCompetencyScores(),
+          // Full cumulative per-question answer history as of right now (not just
+          // this session). This is what lets another device restore the same
+          // student's detailed history — see syncStudentHistoryFromCloud().
+          answers_snapshot: currentStudentProgress.completedQuestions
         });
       }
 

@@ -237,6 +237,10 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+          <button onclick="syncFromGoogleSheets()" class="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="ดึงคะแนนล่าสุดที่นักเรียนส่งเข้า Google Sheets กลับเข้าระบบ">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+            <span>ซิงค์คะแนนจาก Google Sheets</span>
+          </button>
           <button onclick="copyAllStudentLinksForLine()" class="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
             <i class="fa-brands fa-line text-sm text-emerald-600"></i>
             <span>คัดลอกลิงก์ทั้งห้องส่ง LINE</span>
@@ -792,7 +796,7 @@
 
   <!-- MODAL 4: GOOGLE SHEETS CONFIG -->
   <div id="googleSheetsConfigModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4 no-print">
-    <div class="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-100 pb-3">
         <div class="flex items-center gap-2">
           <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg">
@@ -800,7 +804,7 @@
           </div>
           <div>
             <h3 class="font-extrabold text-slate-800 text-base">เชื่อมต่อ Google Sheets รับผลสอบสด</h3>
-            <p class="text-xs text-slate-500">นักเรียนส่งข้อสอบปุ๊บ คะแนนจะถูกบันทึกลงตารางทันที</p>
+            <p class="text-xs text-slate-500">นักเรียนส่งข้อสอบปุ๊บ คะแนนจะถูกบันทึกลงตารางทันที และครูสามารถดึงคะแนนล่าสุดกลับเข้าระบบได้</p>
           </div>
         </div>
         <button onclick="closeGoogleSheetsConfigModal()" class="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
@@ -809,27 +813,84 @@
       </div>
 
       <div class="space-y-3 text-xs">
+        <div class="p-3 bg-indigo-50/60 border border-indigo-200 rounded-2xl space-y-1.5 text-indigo-900">
+          <div class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info"></i> ขั้นตอนการตั้งค่า (ทำครั้งเดียว):</div>
+          <ol class="list-decimal list-inside space-y-0.5 leading-relaxed">
+            <li>สร้าง Google Sheet ใหม่ 1 แผ่น (ว่างๆ ก็ได้ ระบบจะสร้างหัวตารางให้อัตโนมัติ)</li>
+            <li>เมนู <b>ส่วนขยาย (Extensions) → Apps Script</b> แล้วลบโค้ดเดิมทั้งหมด วางโค้ดด้านล่างแทน</li>
+            <li>กด <b>Deploy → New deployment → Web app</b> ตั้งค่า Execute as: <b>Me</b>, Who has access: <b>Anyone</b></li>
+            <li>คัดลอกลิงก์ Web app URL (ลงท้ายด้วย <code>/exec</code>) มาวางในช่องด้านล่าง แล้วกด "บันทึกการเชื่อมต่อ"</li>
+            <li>กด "ทดสอบการเชื่อมต่อ" เพื่อส่งแถวทดสอบ แล้วเปิด Google Sheet ดูว่ามีแถวใหม่ขึ้นหรือไม่</li>
+          </ol>
+        </div>
+
         <div>
           <label class="font-bold text-slate-700 block mb-1">Google Apps Script Web App URL (Webhook):</label>
           <input type="url" id="googleSheetWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full p-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500">
         </div>
 
+        <div id="gsheetStatusBox" class="hidden p-2.5 rounded-xl text-xs font-bold flex items-center gap-2"></div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="testGoogleSheetsConnection()" class="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-plug-circle-check"></i> ทดสอบการเชื่อมต่อ (ส่งแถวทดสอบ)
+          </button>
+          <button onclick="syncFromGoogleSheets()" class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-down"></i> ดึงคะแนนล่าสุดจาก Sheets เข้าระบบ
+          </button>
+        </div>
+        <p class="text-[11px] text-slate-400" id="gsheetLastSyncText">ยังไม่เคยซิงค์ข้อมูล</p>
+
         <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
           <div class="font-bold text-slate-700 flex items-center justify-between">
-            <span>โค้ด Google Apps Script (คัดลอกไปวางในชีต):</span>
-            <button onclick="copyAppsScriptCode()" class="text-indigo-600 font-bold hover:underline">
+            <span>โค้ด Google Apps Script (วางแทนที่โค้ดเดิมทั้งหมดใน Apps Script Editor):</span>
+            <button onclick="copyAppsScriptCode()" class="text-indigo-600 font-bold hover:underline flex-shrink-0">
               <i class="fa-regular fa-copy"></i> คัดลอกโค้ด
             </button>
           </div>
-          <textarea id="appsScriptCodeBlock" readonly rows="7" class="w-full p-2 rounded-lg bg-slate-800 text-emerald-400 font-mono text-[10px]">function doPost(e) {
+          <textarea id="appsScriptCodeBlock" readonly rows="16" class="w-full p-2 rounded-lg bg-slate-800 text-emerald-400 font-mono text-[10px] leading-relaxed">function getSheet_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['Timestamp', 'Student_ID', 'Student_Name', 'Room', 'No', 'Mode', 'Category', 'Score', 'Total', 'Accuracy(%)', 'Num', 'Ops', 'Frac', 'Meas', 'Geo', 'Data', 'Feedback']);
+  }
+  return sheet;
+}
+
+function doPost(e) {
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheet = getSheet_();
     var data = JSON.parse(e.postData.contents);
+
+    if (data.action === 'ping') {
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'pong' })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var sc = data.scores || {};
-    sheet.appendRow([new Date(), data.student_name, data.room, data.no, data.score, data.total, data.accuracy + '%', sc.num || '-', sc.ops || '-', sc.frac || '-', sc.meas || '-', sc.geo || '-', sc.data || '-']);
-    return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: err.toString()})).setMimeType(ContentService.MimeType.JSON);
+    sheet.appendRow([
+      new Date(), data.student_id || '', data.student_name || '', data.room || '', data.no || '',
+      data.mode || '', data.category || '', data.score, data.total, data.accuracy,
+      sc.num || '-', sc.ops || '-', sc.frac || '-', sc.meas || '-', sc.geo || '-', sc.data || '-',
+      data.feedback || ''
+    ]);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    var sheet = getSheet_();
+    var values = sheet.getDataRange().getValues();
+    var headers = values.shift();
+    var rows = values.map(function(row) {
+      var obj = {};
+      headers.forEach(function(h, i) { obj[h] = row[i]; });
+      return obj;
+    });
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success', rows: rows })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
 }</textarea>
         </div>
@@ -1002,7 +1063,8 @@
     let currentAppRole = 'teacher';
     let currentStudent = null;
     let currentLang = 'th';
-    let googleSheetWebhook = 'https://script.google.com/macros/s/AKfycbyEeY_C6dCJD8FUCcKtFUxnVscuFFG6sqQg468r_xreQO0gsTPnf48bPITt9ttBo0tpNw/exec';
+    let googleSheetWebhook = '';
+    let gsheetLastSyncAt = null;
     let activeStudentFeedbackIdx = null;
     let activeExamDrillStudentIdx = null;
     let currentExamFilter = 'all';
@@ -1955,25 +2017,147 @@
 
     function openGoogleSheetsConfigModal() {
       document.getElementById('googleSheetWebhookUrl').value = googleSheetWebhook;
+      updateGsheetLastSyncText();
+      const box = document.getElementById('gsheetStatusBox');
+      if (box) box.classList.add('hidden');
       document.getElementById('googleSheetsConfigModal').classList.remove('hidden');
     }
     function closeGoogleSheetsConfigModal() {
       document.getElementById('googleSheetsConfigModal').classList.add('hidden');
     }
     function saveGoogleSheetsConfig() {
-      googleSheetWebhook = document.getElementById('googleSheetWebhookUrl').value.trim();
+      const url = document.getElementById('googleSheetWebhookUrl').value.trim();
+      if (url && !url.startsWith('https://script.google.com/')) {
+        if (!confirm("ลิงก์นี้ไม่ได้ขึ้นต้นด้วย https://script.google.com/ ต้องการบันทึกต่อหรือไม่?")) return;
+      }
+      googleSheetWebhook = url;
       saveStorage();
-      closeGoogleSheetsConfigModal();
-      alert("บันทึกการเชื่อมต่อ Google Sheets เรียบร้อยแล้ว!");
+      showGsheetStatus(url ? "บันทึกลิงก์เชื่อมต่อเรียบร้อยแล้ว กด \"ทดสอบการเชื่อมต่อ\" เพื่อยืนยันว่าใช้งานได้" : "ล้างลิงก์เชื่อมต่อแล้ว ระบบจะไม่ส่งคะแนนไป Google Sheets", "info");
     }
     function copyAppsScriptCode() {
       const code = document.getElementById('appsScriptCodeBlock').value;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(code).then(() => {
-          alert("คัดลอกโค้ด Google Apps Script แล้ว! นำไปวางใน Extensions -> Apps Script บน Google Sheets ของคุณครูได้เลย");
+          alert("คัดลอกโค้ด Google Apps Script แล้ว! นำไปวางแทนที่โค้ดเดิมทั้งหมดใน Extensions -> Apps Script บน Google Sheets ของคุณครู แล้วกด Deploy ใหม่ได้เลย");
         });
       } else {
         prompt("คัดลอกโค้ด Apps Script:", code);
+      }
+    }
+
+    function showGsheetStatus(message, type) {
+      const box = document.getElementById('gsheetStatusBox');
+      if (!box) return;
+      const styles = {
+        info: 'bg-slate-100 text-slate-700',
+        success: 'bg-emerald-100 text-emerald-800',
+        error: 'bg-rose-100 text-rose-800',
+        loading: 'bg-indigo-100 text-indigo-700'
+      };
+      box.className = "p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 " + (styles[type] || styles.info);
+      const icon = type === 'success' ? 'fa-circle-check' : (type === 'error' ? 'fa-circle-exclamation' : (type === 'loading' ? 'fa-spinner fa-spin' : 'fa-circle-info'));
+      box.innerHTML = '<i class="fa-solid ' + icon + '"></i><span>' + message + '</span>';
+      box.classList.remove('hidden');
+    }
+
+    function updateGsheetLastSyncText() {
+      const el = document.getElementById('gsheetLastSyncText');
+      if (!el) return;
+      el.innerText = gsheetLastSyncAt ? ("ซิงค์ล่าสุด: " + gsheetLastSyncAt.toLocaleString('th-TH')) : "ยังไม่เคยซิงค์ข้อมูล";
+    }
+
+    // Sends one score record to the configured Google Sheets webhook.
+    // Uses mode:'no-cors' + text/plain to avoid CORS preflight against Apps Script.
+    function sendScoreToGoogleSheets(payload) {
+      if (!googleSheetWebhook) return;
+      try {
+        fetch(googleSheetWebhook, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        }).catch(err => console.log('Google Sheets sync notice:', err));
+      } catch (e) {
+        console.log('Google Sheets sync error:', e);
+      }
+    }
+
+    function testGoogleSheetsConnection() {
+      const url = document.getElementById('googleSheetWebhookUrl').value.trim();
+      if (!url) {
+        showGsheetStatus("กรุณากรอกลิงก์ Web App URL ก่อนทดสอบ", "error");
+        return;
+      }
+      googleSheetWebhook = url;
+      saveStorage();
+      showGsheetStatus("กำลังส่งแถวทดสอบไปยัง Google Sheets...", "loading");
+
+      sendScoreToGoogleSheets({
+        action: 'ping',
+        student_id: 'TEST',
+        student_name: 'ทดสอบระบบ (Connection Test)',
+        room: '-', no: '-', mode: 'test', category: '-',
+        score: 0, total: 0, accuracy: 0, scores: {}
+      });
+
+      // mode:'no-cors' hides the real response, so we can only confirm the request was sent.
+      setTimeout(() => {
+        showGsheetStatus("ส่งคำขอทดสอบเรียบร้อยแล้ว! กรุณาเปิด Google Sheet ของคุณครูเพื่อตรวจสอบว่ามีแถวใหม่ขึ้นหรือไม่ (หากไม่ขึ้น ให้ตรวจสอบว่า Deploy เป็น \"Anyone\" แล้ว และวางลิงก์ที่ลงท้ายด้วย /exec)", "success");
+      }, 900);
+    }
+
+    // Pulls all rows back from the Apps Script doGet() endpoint and merges them
+    // into the local classroom database, matching students by Student_ID (or Name+Room).
+    async function syncFromGoogleSheets() {
+      if (!googleSheetWebhook) {
+        showGsheetStatus("กรุณาตั้งค่าและบันทึกลิงก์ Google Sheets ก่อนซิงค์ข้อมูล", "error");
+        openGoogleSheetsConfigModal();
+        return;
+      }
+      showGsheetStatus("กำลังดึงข้อมูลคะแนนล่าสุดจาก Google Sheets...", "loading");
+      try {
+        const res = await fetch(googleSheetWebhook + '?t=' + Date.now(), { method: 'GET' });
+        const json = await res.json();
+        if (json.status !== 'success' || !Array.isArray(json.rows)) {
+          throw new Error(json.message || 'รูปแบบข้อมูลที่ได้รับไม่ถูกต้อง');
+        }
+
+        let updatedCount = 0;
+        json.rows.forEach(row => {
+          if (!row || (row.Mode === 'test')) return;
+          const sid = String(row.Student_ID || '').trim();
+          const name = String(row.Student_Name || '').trim();
+          const room = String(row.Room || '').trim();
+
+          let student = classroomDatabase.find(s => sid && String(s.id) === sid);
+          if (!student) student = classroomDatabase.find(s => s.name === name && s.room === room);
+          if (!student) return;
+
+          const score = Number(row.Score) || 0;
+          const total = Number(row.Total) || 0;
+          const accuracy = Number(row['Accuracy(%)']) || (total > 0 ? Math.round((score / total) * 100) : 0);
+
+          student.completed = Math.max(student.completed || 0, total);
+          student.accuracy = accuracy;
+          student.scores = {
+            num: Number(row.Num) || (student.scores && student.scores.num) || 50,
+            ops: Number(row.Ops) || (student.scores && student.scores.ops) || 50,
+            frac: Number(row.Frac) || (student.scores && student.scores.frac) || 50,
+            meas: Number(row.Meas) || (student.scores && student.scores.meas) || 50,
+            geo: Number(row.Geo) || (student.scores && student.scores.geo) || 50,
+            data: Number(row.Data) || (student.scores && student.scores.data) || 50
+          };
+          updatedCount++;
+        });
+
+        saveStorage();
+        if (currentAppRole === 'teacher') renderTeacherDashboard();
+        gsheetLastSyncAt = new Date();
+        updateGsheetLastSyncText();
+        showGsheetStatus("ซิงค์สำเร็จ! อัปเดตคะแนนนักเรียน " + updatedCount + " รายการจากทั้งหมด " + json.rows.length + " แถวใน Sheet", "success");
+      } catch (err) {
+        console.error(err);
+        showGsheetStatus("ดึงข้อมูลไม่สำเร็จ: " + err.message + " (ตรวจสอบว่า Deploy แบบ \"Anyone\" และคัดลอกโค้ด doGet ล่าสุดแล้ว)", "error");
       }
     }
 
@@ -2406,25 +2590,39 @@
 
       updateStudentStats();
 
-      if (googleSheetWebhook) {
-        const payload = {
+      // Also mirror this attempt straight into the classroom database so the
+      // teacher dashboard reflects it immediately, even before any Sheets sync.
+      if (currentStudent) {
+        let record = classroomDatabase.find(s => String(s.id) === String(currentStudent.id));
+        if (record) {
+          record.completed = Math.max(record.completed || 0, total);
+          record.accuracy = acc;
+          record.scores = getStudentCompetencyScores();
+          saveStorage();
+        }
+      }
+
+      if (googleSheetWebhook && currentStudent) {
+        let categoryLabel = 'จำลองสอบ NT (30 ข้อ)';
+        if (activeQuiz.mode === 'topic') {
+          const catObj = categories.find(c => c.id === activeQuiz.category);
+          categoryLabel = catObj ? (currentLang === 'th' ? catObj.th : catObj.en) : '-';
+        } else if (activeQuiz.mode === 'weakness') {
+          categoryLabel = 'ลุยด่านแก้ข้อผิด';
+        }
+
+        sendScoreToGoogleSheets({
+          student_id: currentStudent.id,
           student_name: currentStudent.name,
           room: currentStudent.room,
           no: currentStudent.no,
+          mode: activeQuiz.mode,
+          category: categoryLabel,
           score: correct,
           total: total,
           accuracy: acc,
           scores: getStudentCompetencyScores()
-        };
-
-        try {
-          fetch(googleSheetWebhook, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-          }).catch(err => console.log('Sheets Sync notice:', err));
-        } catch(e) { console.log('Sheets Sync err:', e); }
+        });
       }
 
       if (acc >= 80) {

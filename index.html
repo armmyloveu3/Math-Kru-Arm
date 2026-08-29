@@ -1295,10 +1295,20 @@ function doGet(e) {
           const no = urlParams.get('no') || sid;
           const avatar = urlParams.get('avatar') || '🦸‍♂️';
           const school = urlParams.get('school') || 'โรงเรียนประถมศึกษา';
+          const gs = urlParams.get('gs');
 
           currentStudent = { id: sid, name: decodeURIComponent(name), room: decodeURIComponent(room), no: no, avatar: avatar, school: decodeURIComponent(school) };
           currentAppRole = 'student';
           loadStudentProgress(sid);
+
+          // The Magic Link carries the teacher's Google Sheets webhook (see
+          // buildMagicLink) precisely so a brand-new device can sync without
+          // the student ever touching a settings screen. Save it locally too,
+          // so it keeps working even if the person bookmarks a shortened URL.
+          if (gs) {
+            googleSheetWebhook = decodeURIComponent(gs);
+            try { localStorage.setItem('nt_gsheet_webhook_v7', googleSheetWebhook); } catch (e) {}
+          }
           return true;
         }
       } catch(e) { console.warn(e); }
@@ -1457,7 +1467,7 @@ function doGet(e) {
       const baseUrl = window.location.origin + window.location.pathname;
 
       students.forEach((s, idx) => {
-        const magicUrl = baseUrl + '?sid=' + encodeURIComponent(s.id) + '&name=' + encodeURIComponent(s.name) + '&no=' + encodeURIComponent(s.no||s.id) + '&room=' + encodeURIComponent(s.room) + '&avatar=' + encodeURIComponent(s.avatar||'🦸‍♂️');
+        const magicUrl = buildMagicLink(s);
 
         const tr = document.createElement('tr');
         tr.className = "hover:bg-slate-50 transition";
@@ -1653,6 +1663,22 @@ function doGet(e) {
       });
     }
 
+    // Builds a student's Magic Link URL. Crucially includes the teacher's
+    // configured Google Sheets webhook (as &gs=...) so a fresh device that has
+    // never opened the app before still knows where to send/pull data —
+    // otherwise googleSheetWebhook would be blank on that device (it lives in
+    // that browser's own localStorage) and Sheets sync would silently no-op.
+    function buildMagicLink(student) {
+      const baseUrl = window.location.origin + window.location.pathname;
+      let url = baseUrl + '?sid=' + encodeURIComponent(student.id) + '&name=' + encodeURIComponent(student.name) +
+        '&no=' + encodeURIComponent(student.no || student.id) + '&room=' + encodeURIComponent(student.room) +
+        '&avatar=' + encodeURIComponent(student.avatar || '🦸‍♂️');
+      if (googleSheetWebhook) {
+        url += '&gs=' + encodeURIComponent(googleSheetWebhook);
+      }
+      return url;
+    }
+
     function copySingleStudentLink(url, name) {
       if (navigator.clipboard) {
         navigator.clipboard.writeText(url).then(() => {
@@ -1671,7 +1697,7 @@ function doGet(e) {
       const baseUrl = window.location.origin + window.location.pathname;
       let text = "📚 ลิงก์เข้าทำแบบทดสอบคณิตศาสตร์ NT ป.3 ประจำตัวนักเรียน:\n\n";
       classroomDatabase.forEach(s => {
-        const magicUrl = baseUrl + '?sid=' + encodeURIComponent(s.id) + '&name=' + encodeURIComponent(s.name) + '&no=' + encodeURIComponent(s.no||s.id) + '&room=' + encodeURIComponent(s.room) + '&avatar=' + encodeURIComponent(s.avatar||'🦸‍♂️');
+        const magicUrl = buildMagicLink(s);
         text += "• เลขที่ " + (s.no || s.id) + " " + s.name + ":\n" + magicUrl + "\n\n";
       });
       if (navigator.clipboard) {
@@ -1743,8 +1769,7 @@ function doGet(e) {
       document.getElementById('newStudentNo').value = '';
       renderTeacherDashboard();
 
-      const baseUrl = window.location.origin + window.location.pathname;
-      const magicUrl = baseUrl + '?sid=' + encodeURIComponent(newStudent.id) + '&name=' + encodeURIComponent(newStudent.name) + '&no=' + encodeURIComponent(newStudent.no) + '&room=' + encodeURIComponent(newStudent.room) + '&avatar=' + encodeURIComponent(newStudent.avatar);
+      const magicUrl = buildMagicLink(newStudent);
       copySingleStudentLink(magicUrl, newStudent.name);
     }
 

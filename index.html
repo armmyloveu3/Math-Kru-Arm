@@ -1041,12 +1041,12 @@
 
     function loadStorage() {
       try {
-        const savedQuestions = localStorage.getItem('nt_questions_v6');
+        const savedQuestions = localStorage.getItem('nt_questions_v7');
         if (savedQuestions) questions = JSON.parse(savedQuestions);
       } catch(e) { console.warn(e); }
 
       try {
-        const savedClass = localStorage.getItem('nt_classroom_v6');
+        const savedClass = localStorage.getItem('nt_classroom_v7');
         if (savedClass) {
           classroomDatabase = JSON.parse(savedClass);
         } else {
@@ -1057,16 +1057,16 @@
       }
 
       try {
-        const savedWebhook = localStorage.getItem('nt_gsheet_webhook_v6');
+        const savedWebhook = localStorage.getItem('nt_gsheet_webhook_v7');
         if (savedWebhook) googleSheetWebhook = savedWebhook;
       } catch(e) {}
     }
 
     function saveStorage() {
       try {
-        localStorage.setItem('nt_questions_v6', JSON.stringify(questions));
-        localStorage.setItem('nt_classroom_v6', JSON.stringify(classroomDatabase));
-        localStorage.setItem('nt_gsheet_webhook_v6', googleSheetWebhook);
+        localStorage.setItem('nt_questions_v7', JSON.stringify(questions));
+        localStorage.setItem('nt_classroom_v7', JSON.stringify(classroomDatabase));
+        localStorage.setItem('nt_gsheet_webhook_v7', googleSheetWebhook);
       } catch(e) { console.warn(e); }
     }
 
@@ -1368,17 +1368,14 @@
       const container = document.getElementById('studentExamQuestionsList');
       container.innerHTML = '';
 
-      // Collect answers from student record
       const studentAnswers = s.answers || {};
       
-      // Let's also check if active user is this student in localStorage
       let localProg = {};
       try {
         const p = localStorage.getItem('nt_student_prog_' + s.id);
         if (p) localProg = JSON.parse(p).completedQuestions || {};
       } catch(e) {}
 
-      // Merge saved and current progress
       const mergedAnswers = { ...studentAnswers };
       Object.keys(localProg).forEach(qid => {
         mergedAnswers[qid] = { opt: localProg[qid].selectedOption, isCorrect: localProg[qid].isCorrect };
@@ -1411,7 +1408,7 @@
 
       questions.forEach((q) => {
         const userAns = mergedAnswers[q.id];
-        if (!userAns) return; // only show attempted questions
+        if (!userAns) return;
 
         const isCorrect = userAns.isCorrect;
         if (currentExamFilter === 'wrong' && isCorrect) return;
@@ -1477,7 +1474,7 @@
     function copySingleStudentLink(url, name) {
       if (navigator.clipboard) {
         navigator.clipboard.writeText(url).then(() => {
-          alert("คัดลอกลิงก์สำหรับ "" + name + "" เรียบร้อยแล้ว! สามารถนำไปส่งให้นักเรียนใน LINE ได้ทันที");
+          alert(`คัดลอกลิงก์สำหรับ "${name}" เรียบร้อยแล้ว! สามารถนำไปส่งให้นักเรียนใน LINE ได้ทันที`);
         });
       } else {
         prompt("คัดลอกลิงก์นี้ส่งให้นักเรียน:", url);
@@ -1490,15 +1487,10 @@
         return;
       }
       const baseUrl = window.location.origin + window.location.pathname;
-      let text = "📚 ลิงก์เข้าทำแบบทดสอบคณิตศาสตร์ NT ป.3 ประจำตัวนักเรียน:
-
-";
+      let text = "📚 ลิงก์เข้าทำแบบทดสอบคณิตศาสตร์ NT ป.3 ประจำตัวนักเรียน:\n\n";
       classroomDatabase.forEach(s => {
         const magicUrl = baseUrl + '?sid=' + encodeURIComponent(s.id) + '&name=' + encodeURIComponent(s.name) + '&no=' + encodeURIComponent(s.no||s.id) + '&room=' + encodeURIComponent(s.room) + '&avatar=' + encodeURIComponent(s.avatar||'🦸‍♂️');
-        text += "• เลขที่ " + (s.no || s.id) + " " + s.name + ":
-" + magicUrl + "
-
-";
+        text += "• เลขที่ " + (s.no || s.id) + " " + s.name + ":\n" + magicUrl + "\n\n";
       });
       if (navigator.clipboard) {
         navigator.clipboard.writeText(text).then(() => {
@@ -1514,12 +1506,10 @@
         alert("ยังไม่มีข้อมูลนักเรียน");
         return;
       }
-      let csv = "﻿No,Name,Classroom,School,Completed_Questions,Accuracy_Percentage,Numbers,Operations,Fractions,Measurement,Geometry,Data,Feedback
-";
+      let csv = "\uFEFFNo,Name,Classroom,School,Completed_Questions,Accuracy_Percentage,Numbers,Operations,Fractions,Measurement,Geometry,Data,Feedback\n";
       classroomDatabase.forEach((s, i) => {
         const sc = s.scores || {};
-        csv += '"' + (s.no || s.id || (i+1)) + '","' + s.name + '","' + s.room + '","' + (s.school || '') + '",' + (s.completed || 0) + ',' + (s.accuracy || 0) + ',' + (sc.num || 0) + ',' + (sc.ops || 0) + ',' + (sc.frac || 0) + ',' + (sc.meas || 0) + ',' + (sc.geo || 0) + ',' + (sc.data || 0) + ',"' + ((s.feedback || '').replace(/"/g, '""')) + '"
-';
+        csv += '"' + (s.no || s.id || (i+1)) + '","' + s.name + '","' + s.room + '","' + (s.school || '') + '",' + (s.completed || 0) + ',' + (s.accuracy || 0) + ',' + (sc.num || 0) + ',' + (sc.ops || 0) + ',' + (sc.frac || 0) + ',' + (sc.meas || 0) + ',' + (sc.geo || 0) + ',' + (sc.data || 0) + ',"' + ((s.feedback || '').replace(/"/g, '""')) + '"\n';
       });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement("a");
@@ -2056,7 +2046,6 @@
         classroomDatabase[idx].accuracy = acc;
         classroomDatabase[idx].scores = getStudentCompetencyScores();
         
-        // Save answers map directly into student profile
         const ansMap = {};
         Object.keys(currentStudentProgress.completedQuestions).forEach(qid => {
           ansMap[qid] = {
@@ -2417,7 +2406,6 @@
 
       updateStudentStats();
 
-      // ================= ROBUST GOOGLE SHEETS POST =================
       if (googleSheetWebhook) {
         const payload = {
           student_name: currentStudent.name,
@@ -2687,6 +2675,7 @@
         }
       }
     };
+
   </script>
 </body>
 </html>

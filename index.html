@@ -348,9 +348,13 @@
               </div>
             </div>
           </div>
-          <button onclick="switchStudentView('analytics')" class="touch-btn w-full py-2.5 px-4 bg-slate-100 active:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2">
+          <button onclick="switchStudentView('analytics')" class="touch-btn w-full py-2.5 px-4 bg-slate-100 active:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 mb-2">
             <span>ดูรายงานวิเคราะห์ละเอียด</span>
             <i class="fa-solid fa-arrow-right"></i>
+          </button>
+          <button onclick="switchStudentView('history')" class="touch-btn w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 text-indigo-700 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>ย้อนดูข้อสอบที่เคยทำ & เฉลย</span>
           </button>
         </div>
 
@@ -581,6 +585,40 @@
             <canvas id="studentAnalyticsBarChart"></canvas>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- STUDENT VIEW 6: HISTORY & REVIEW (ย้อนดูข้อสอบที่เคยทำ + เฉลย) -->
+    <section id="view-student-history" class="hidden space-y-4 sm:space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <button onclick="switchStudentView('home')" class="text-xs font-bold text-slate-500 hover:text-indigo-600 mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-chevron-left"></i> <span>กลับหน้าหลัก</span>
+          </button>
+          <h2 class="text-xl sm:text-2xl font-black text-slate-800">ย้อนดูข้อสอบที่เคยทำ & เฉลย</h2>
+          <p class="text-xs text-slate-500 mt-0.5">ทุกข้อที่คุณเคยตอบแล้ว จะแสดงคำตอบที่คุณเลือก เฉลยที่ถูกต้อง และวิธีคิดให้ทบทวนได้ทันที</p>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-4 shadow-sm space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+            <button id="myHistFilterAll" onclick="filterMyHistory('all')" class="px-3 py-1 rounded-lg bg-white shadow-sm text-indigo-700 transition">ทั้งหมด (<span id="myHistCountAll">0</span>)</button>
+            <button id="myHistFilterWrong" onclick="filterMyHistory('wrong')" class="px-3 py-1 rounded-lg text-rose-700 hover:bg-white/60 transition">เฉพาะที่ผิด ❌ (<span id="myHistCountWrong">0</span>)</button>
+            <button id="myHistFilterCorrect" onclick="filterMyHistory('correct')" class="px-3 py-1 rounded-lg text-emerald-700 hover:bg-white/60 transition">เฉพาะที่ถูก ✅ (<span id="myHistCountCorrect">0</span>)</button>
+          </div>
+          <select id="myHistCategoryFilter" onchange="filterMyHistory()" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 bg-white">
+            <option value="all">ทุกหมวดหมู่</option>
+            <option value="num">จำนวนและแบบรูป</option>
+            <option value="ops">การคำนวณพื้นฐาน</option>
+            <option value="frac">เศษส่วน</option>
+            <option value="meas">การวัด เวลา เงิน</option>
+            <option value="geo">เรขาคณิต สมมาตร</option>
+            <option value="data">การจัดการข้อมูล</option>
+          </select>
+        </div>
+
+        <div class="space-y-3 max-h-[65vh] overflow-y-auto pr-1" id="myHistoryList"></div>
       </div>
     </section>
   </main>
@@ -1068,13 +1106,30 @@ function doGet(e) {
     let activeStudentFeedbackIdx = null;
     let activeExamDrillStudentIdx = null;
     let currentExamFilter = 'all';
+    let currentMyHistFilter = 'all';
 
-    let currentStudentProgress = {
-      completedQuestions: {},
-      streak: 1,
-      feedback: "ยินดีต้อนรับสู่ระบบ NT Math Hero! ขอให้สนุกกับการฝึกทำโจทย์นะลูก",
-      feedbackDate: "ล่าสุด"
-    };
+    function freshStudentProgress() {
+      return {
+        completedQuestions: {},
+        streak: 1,
+        feedback: "ยินดีต้อนรับสู่ระบบ NT Math Hero! ขอให้สนุกกับการฝึกทำโจทย์นะลูก",
+        feedbackDate: "ล่าสุด"
+      };
+    }
+
+    // Loads the saved progress for a given student id from localStorage, or
+    // resets to a fresh blank record if that student has no history yet.
+    // Called any time the active student changes, so preview/switching never
+    // shows stale data from a previously-loaded student.
+    function loadStudentProgress(sid) {
+      currentStudentProgress = freshStudentProgress();
+      try {
+        const saved = localStorage.getItem('nt_student_prog_' + sid);
+        if (saved) currentStudentProgress = JSON.parse(saved);
+      } catch (e) { console.warn(e); }
+    }
+
+    let currentStudentProgress = freshStudentProgress();
 
     let classroomDatabase = [];
 
@@ -1175,11 +1230,7 @@ function doGet(e) {
 
           currentStudent = { id: sid, name: decodeURIComponent(name), room: decodeURIComponent(room), no: no, avatar: avatar, school: decodeURIComponent(school) };
           currentAppRole = 'student';
-
-          const savedStudentProg = localStorage.getItem('nt_student_prog_' + sid);
-          if (savedStudentProg) {
-            try { currentStudentProgress = JSON.parse(savedStudentProg); } catch(e) {}
-          }
+          loadStudentProgress(sid);
           return true;
         }
       } catch(e) { console.warn(e); }
@@ -1194,6 +1245,7 @@ function doGet(e) {
         } else if (!currentStudent) {
           currentStudent = { id: '1', name: 'น้องอลิซ สุขใจ', no: '1', room: 'ป.3/1', school: 'โรงเรียนสาธิต', avatar: '🦸‍♂️' };
         }
+        loadStudentProgress(currentStudent.id);
         currentAppRole = 'student';
         initStudentPortal();
       } else {
@@ -2192,7 +2244,7 @@ function doGet(e) {
     }
 
     function switchStudentView(view) {
-      ['home', 'topics', 'quiz', 'result', 'analytics'].forEach(v => {
+      ['home', 'topics', 'quiz', 'result', 'analytics', 'history'].forEach(v => {
         const el = document.getElementById('view-student-' + v);
         if (el) el.classList.add('hidden');
       });
@@ -2208,6 +2260,9 @@ function doGet(e) {
         renderStudentTopics();
       } else if (view === 'analytics') {
         renderStudentAnalyticsCharts();
+      } else if (view === 'history') {
+        currentMyHistFilter = 'all';
+        filterMyHistory();
       }
     }
 
@@ -2242,29 +2297,102 @@ function doGet(e) {
       }
     }
 
-    function getStudentCompetencyScores() {
-      const catScores = {};
+    // Generic helper: given a map of {questionId: {isCorrect}} and the pool of
+    // questions it was drawn from, returns per-category {attempted, total, correct, score}.
+    // score is null when the category has zero attempts, so callers can tell
+    // "never practiced" apart from "practiced and scored 0%".
+    function computeCategoryStats(answeredMap, questionPool) {
+      const stats = {};
       categories.forEach(cat => {
-        const catQuestions = questions.filter(q => q.cat_id === cat.id);
+        const catQuestions = questionPool.filter(q => q.cat_id === cat.id);
         let correct = 0;
         let attempted = 0;
         catQuestions.forEach(q => {
-          if (currentStudentProgress.completedQuestions[q.id]) {
+          const ans = answeredMap[q.id];
+          if (ans) {
             attempted++;
-            if (currentStudentProgress.completedQuestions[q.id].isCorrect) correct++;
+            if (ans.isCorrect) correct++;
           }
         });
-        catScores[cat.id] = attempted > 0 ? Math.round((correct / attempted) * 100) : 50;
+        stats[cat.id] = {
+          attempted: attempted,
+          total: catQuestions.length,
+          correct: correct,
+          score: attempted > 0 ? Math.round((correct / attempted) * 100) : null
+        };
       });
+      return stats;
+    }
+
+    // Cumulative, all-time mastery per category (used on the Home dashboard
+    // and the Analytics page — the student's long-term competency map).
+    function getStudentCategoryStats() {
+      return computeCategoryStats(currentStudentProgress.completedQuestions, questions);
+    }
+
+    // Kept for backward-compatible callers (Google Sheets payload, classroom
+    // record storage) that just want a plain {catId: percentage} map.
+    // Categories never attempted are reported as 0, not a fabricated average.
+    function getStudentCompetencyScores() {
+      const stats = getStudentCategoryStats();
+      const catScores = {};
+      categories.forEach(cat => { catScores[cat.id] = stats[cat.id].score !== null ? stats[cat.id].score : 0; });
       return catScores;
+    }
+
+    // Session-only mastery per category, built from just the quiz the student
+    // most recently submitted (not their whole history). This is what the
+    // "สมรรถนะที่ได้จากการทดสอบนี้" result screen should show, since a topic
+    // drill or weakness round only ever touches a handful of categories.
+    function getSessionCategoryStats() {
+      const answeredMap = {};
+      Object.keys(activeQuiz.userAnswers).forEach(qidStr => {
+        const qid = Number(qidStr);
+        const q = activeQuiz.questionList.find(item => item.id === qid);
+        if (q) answeredMap[qid] = { isCorrect: activeQuiz.userAnswers[qidStr] === q.answer };
+      });
+      return computeCategoryStats(answeredMap, activeQuiz.questionList);
+    }
+
+    // Builds the pointLabels.callback + tooltip config shared by every radar
+    // chart, so each axis shows "หมวด (x/15 ข้อ)" and hovering a point that has
+    // zero attempts clearly says so instead of implying a real score.
+    function buildStatsAwareRadarScale(stats, opts) {
+      opts = opts || {};
+      return {
+        r: {
+          min: 0,
+          max: 100,
+          ticks: { display: false, stepSize: 25 },
+          pointLabels: {
+            font: { size: opts.fontSize || 11, weight: 'bold' },
+            callback: function(label, index) {
+              const cat = categories[index];
+              const s = stats[cat.id];
+              return label + ' (' + s.attempted + '/' + s.total + ')';
+            }
+          }
+        }
+      };
+    }
+    function statsAwareTooltipLabel(stats) {
+      return function(context) {
+        const cat = categories[context.dataIndex];
+        const s = stats[cat.id];
+        if (context.dataset.label && context.dataset.label.indexOf('เป้าหมาย') !== -1 || (context.dataset.label || '').indexOf('Target') !== -1) {
+          return context.dataset.label + ': ' + context.parsed.r + '%';
+        }
+        if (s.attempted === 0) return 'ยังไม่เคยฝึกหมวดนี้เลย';
+        return 'ความแม่นยำ ' + s.score + '% (ทำแล้ว ' + s.attempted + '/' + s.total + ' ข้อ, ตอบถูก ' + s.correct + ')';
+      };
     }
 
     function updateStudentRadarChart() {
       if (!isChartAvailable()) return;
 
-      const scores = getStudentCompetencyScores();
+      const stats = getStudentCategoryStats();
       const labels = categories.map(c => currentLang === 'th' ? c.th : c.en);
-      const dataValues = categories.map(c => scores[c.id]);
+      const dataValues = categories.map(c => stats[c.id].score !== null ? stats[c.id].score : 0);
 
       const canvas = document.getElementById('studentHomeRadarChart');
       if (canvas) {
@@ -2282,8 +2410,8 @@ function doGet(e) {
                 backgroundColor: 'rgba(79, 70, 229, 0.25)',
                 borderColor: 'rgba(79, 70, 229, 1)',
                 borderWidth: 2,
-                pointBackgroundColor: 'rgba(79, 70, 229, 1)',
-                pointRadius: 4
+                pointBackgroundColor: categories.map(c => stats[c.id].attempted === 0 ? 'rgba(148, 163, 184, 0.9)' : 'rgba(79, 70, 229, 1)'),
+                pointRadius: categories.map(c => stats[c.id].attempted === 0 ? 3 : 4)
               },
               {
                 label: currentLang === 'th' ? 'เป้าหมาย (80%)' : 'Target (80%)',
@@ -2299,14 +2427,8 @@ function doGet(e) {
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: {
-              r: {
-                min: 0,
-                max: 100,
-                ticks: { display: false, stepSize: 25 },
-                pointLabels: { font: { size: 11, weight: 'bold' } }
-              }
-            }
+            scales: buildStatsAwareRadarScale(stats),
+            plugins: { tooltip: { callbacks: { label: statsAwareTooltipLabel(stats) } } }
           }
         });
       }
@@ -2638,9 +2760,12 @@ function doGet(e) {
 
     function renderStudentResultRadar() {
       if (!isChartAvailable()) return;
-      const scores = getStudentCompetencyScores();
+      // Uses session-only stats (just this attempt), matching the screen's own
+      // label "สมรรถนะที่ได้จากการทดสอบนี้" — a topic drill on one category will
+      // correctly show 0/0 (not attempted) on the other five axes.
+      const stats = getSessionCategoryStats();
       const labels = categories.map(c => currentLang === 'th' ? c.th : c.en);
-      const dataValues = categories.map(c => scores[c.id]);
+      const dataValues = categories.map(c => stats[c.id].score !== null ? stats[c.id].score : 0);
 
       const canvas = document.getElementById('studentResultRadarChart');
       if (canvas) {
@@ -2657,14 +2782,15 @@ function doGet(e) {
               backgroundColor: 'rgba(16, 185, 129, 0.25)',
               borderColor: 'rgba(16, 185, 129, 1)',
               borderWidth: 2,
-              pointBackgroundColor: 'rgba(16, 185, 129, 1)'
+              pointBackgroundColor: categories.map(c => stats[c.id].attempted === 0 ? 'rgba(148, 163, 184, 0.9)' : 'rgba(16, 185, 129, 1)'),
+              pointRadius: categories.map(c => stats[c.id].attempted === 0 ? 3 : 4)
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: { r: { min: 0, max: 100, ticks: { display: false } } },
-            plugins: { legend: { display: false } }
+            scales: buildStatsAwareRadarScale(stats, { fontSize: 10 }),
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: statsAwareTooltipLabel(stats) } } }
           }
         });
       }
@@ -2672,9 +2798,10 @@ function doGet(e) {
 
     function renderStudentAnalyticsCharts() {
       if (!isChartAvailable()) return;
-      const scores = getStudentCompetencyScores();
+      // Cumulative, all-time mastery (this is the long-term progress dashboard).
+      const stats = getStudentCategoryStats();
       const labels = categories.map(c => currentLang === 'th' ? c.th : c.en);
-      const dataValues = categories.map(c => scores[c.id]);
+      const dataValues = categories.map(c => stats[c.id].score !== null ? stats[c.id].score : 0);
 
       const radarCanvas = document.getElementById('studentAnalyticsRadarChart');
       if (radarCanvas) {
@@ -2691,7 +2818,8 @@ function doGet(e) {
                 backgroundColor: 'rgba(79, 70, 229, 0.25)',
                 borderColor: 'rgba(79, 70, 229, 1)',
                 borderWidth: 2,
-                pointBackgroundColor: 'rgba(79, 70, 229, 1)'
+                pointBackgroundColor: categories.map(c => stats[c.id].attempted === 0 ? 'rgba(148, 163, 184, 0.9)' : 'rgba(79, 70, 229, 1)'),
+                pointRadius: categories.map(c => stats[c.id].attempted === 0 ? 3 : 4)
               },
               {
                 label: 'เป้าหมายมาตรฐาน (80%)',
@@ -2706,7 +2834,8 @@ function doGet(e) {
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: { r: { min: 0, max: 100, ticks: { stepSize: 25 } } }
+            scales: buildStatsAwareRadarScale(stats),
+            plugins: { tooltip: { callbacks: { label: statsAwareTooltipLabel(stats) } } }
           }
         });
       }
@@ -2722,7 +2851,11 @@ function doGet(e) {
             datasets: [{
               label: 'ความแม่นยำ (%)',
               data: dataValues,
-              backgroundColor: dataValues.map(v => v >= 80 ? 'rgba(16, 185, 129, 0.85)' : v >= 60 ? 'rgba(59, 130, 246, 0.85)' : 'rgba(239, 68, 68, 0.85)'),
+              backgroundColor: categories.map(c => {
+                if (stats[c.id].attempted === 0) return 'rgba(148, 163, 184, 0.5)';
+                const v = stats[c.id].score;
+                return v >= 80 ? 'rgba(16, 185, 129, 0.85)' : v >= 60 ? 'rgba(59, 130, 246, 0.85)' : 'rgba(239, 68, 68, 0.85)';
+              }),
               borderRadius: 6
             }]
           },
@@ -2730,13 +2863,152 @@ function doGet(e) {
             responsive: true,
             maintainAspectRatio: false,
             scales: { y: { min: 0, max: 100 } },
-            plugins: { legend: { display: false } }
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: statsAwareTooltipLabel(stats) } }
+            }
           }
         });
       }
     }
 
     let studentSelfAvatar = '🦸‍♂️';
+    function filterMyHistory(type) {
+      if (type) currentMyHistFilter = type;
+      ['all', 'wrong', 'correct'].forEach(t => {
+        const btn = document.getElementById('myHistFilter' + (t.charAt(0).toUpperCase() + t.slice(1)));
+        if (btn) {
+          btn.className = (t === currentMyHistFilter)
+            ? "px-3 py-1 rounded-lg bg-white shadow-sm font-bold text-indigo-700 transition"
+            : "px-3 py-1 rounded-lg text-slate-600 hover:bg-white/60 transition";
+        }
+      });
+      renderMyHistoryList();
+    }
+
+    // Student-facing "review my past exams" screen: shows every question the
+    // logged-in student has already answered, their chosen option, the correct
+    // answer (always visible so it doubles as an answer key), and the explanation.
+    function renderMyHistoryList() {
+      const container = document.getElementById('myHistoryList');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const catFilterEl = document.getElementById('myHistCategoryFilter');
+      const catFilter = catFilterEl ? catFilterEl.value : 'all';
+      const answered = currentStudentProgress.completedQuestions || {};
+      const answeredIds = Object.keys(answered).map(Number);
+
+      let totalCorrect = 0, totalWrong = 0;
+      answeredIds.forEach(id => {
+        if (answered[id].isCorrect) totalCorrect++; else totalWrong++;
+      });
+      document.getElementById('myHistCountAll').innerText = answeredIds.length;
+      document.getElementById('myHistCountWrong').innerText = totalWrong;
+      document.getElementById('myHistCountCorrect').innerText = totalCorrect;
+
+      if (answeredIds.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 text-slate-400 space-y-2">
+            <i class="fa-regular fa-folder-open text-3xl"></i>
+            <p class="text-xs">คุณยังไม่เคยทำข้อสอบเลย ลองเริ่มฝึกทำดูสิ!</p>
+          </div>
+        `;
+        return;
+      }
+
+      const optLetters = ['ก', 'ข', 'ค', 'ง'];
+      const optLettersEn = ['A', 'B', 'C', 'D'];
+      let renderedCount = 0;
+
+      // Sort by most recently answered first, so the latest attempt shows up on top.
+      const sortedIds = answeredIds.slice().sort((a, b) => (answered[b].timestamp || 0) - (answered[a].timestamp || 0));
+
+      sortedIds.forEach(qid => {
+        const q = questions.find(item => item.id === qid);
+        if (!q) return;
+
+        const userAns = answered[qid];
+        const isCorrect = userAns.isCorrect;
+
+        if (currentMyHistFilter === 'wrong' && isCorrect) return;
+        if (currentMyHistFilter === 'correct' && !isCorrect) return;
+        if (catFilter !== 'all' && q.cat_id !== catFilter) return;
+
+        const catObj = categories.find(c => c.id === q.cat_id) || categories[0];
+        const isTh = currentLang === 'th';
+        const letters = isTh ? optLetters : optLettersEn;
+        const options = isTh ? q.options_th : (q.options_en || q.options_th);
+        const questionText = isTh ? q.question_th : (q.question_en || q.question_th);
+        const explanationText = isTh ? q.explanation_th : (q.explanation_en || q.explanation_th);
+
+        const chosenIdx = userAns.selectedOption;
+        const chosenText = options[chosenIdx] !== undefined ? options[chosenIdx] : '-';
+        const correctText = options[q.answer];
+        const whenText = userAns.timestamp ? new Date(userAns.timestamp).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+
+        const card = document.createElement('div');
+        card.className = `p-4 rounded-2xl border text-xs transition space-y-2.5 ${isCorrect ? 'bg-emerald-50/40 border-emerald-200' : 'bg-rose-50/50 border-rose-200'}`;
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between flex-wrap gap-1.5">
+            <div class="flex items-center gap-2">
+              <span class="font-black px-2 py-0.5 rounded-md ${isCorrect ? 'bg-emerald-200 text-emerald-900' : 'bg-rose-200 text-rose-900'}">ข้อที่ #${q.id}</span>
+              <span class="font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700">${isTh ? catObj.th : catObj.en}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              ${whenText ? `<span class="text-[10px] text-slate-400">${whenText}</span>` : ''}
+              <span class="px-2.5 py-0.5 rounded-full font-black text-xs ${isCorrect ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
+                ${isCorrect ? '✓ ตอบถูก' : '✗ ตอบผิด'}
+              </span>
+            </div>
+          </div>
+
+          <div class="font-bold text-slate-800 text-sm leading-relaxed">${questionText}</div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <div class="p-2.5 rounded-xl border ${isCorrect ? 'bg-white border-emerald-300 text-emerald-800' : 'bg-white border-rose-300 text-rose-800'}">
+              <div class="text-[10px] text-slate-400 font-bold mb-0.5">คำตอบที่คุณเลือก:</div>
+              <div class="font-bold flex items-center gap-1.5">
+                <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${isCorrect ? 'bg-emerald-600' : 'bg-rose-600'}">
+                  ${letters[chosenIdx] || '-'}
+                </span>
+                <span>${chosenText}</span>
+              </div>
+            </div>
+
+            <div class="p-2.5 rounded-xl border bg-white border-emerald-300 text-emerald-800">
+              <div class="text-[10px] text-slate-400 font-bold mb-0.5">เฉลยคำตอบที่ถูกต้อง:</div>
+              <div class="font-bold flex items-center gap-1.5">
+                <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-emerald-600 flex-shrink-0">
+                  ${letters[q.answer]}
+                </span>
+                <span>${correctText}</span>
+              </div>
+            </div>
+          </div>
+
+          ${explanationText ? `
+            <div class="p-2 rounded-xl bg-white/80 border border-slate-200 text-slate-600 text-[11px] flex items-start gap-1.5">
+              <span class="text-amber-500 font-bold flex-shrink-0">💡 วิธีคิด:</span>
+              <span>${explanationText}</span>
+            </div>
+          ` : ''}
+        `;
+        container.appendChild(card);
+        renderedCount++;
+      });
+
+      if (renderedCount === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 text-slate-400 space-y-2">
+            <i class="fa-regular fa-face-smile text-3xl"></i>
+            <p class="text-xs">ไม่พบข้อสอบที่ตรงกับตัวกรองนี้</p>
+          </div>
+        `;
+      }
+    }
+
     function openEditStudentProfileModal() {
       studentSelfAvatar = currentStudent.avatar || '🦸‍♂️';
       document.getElementById('editStudentSelfName').value = currentStudent.name;

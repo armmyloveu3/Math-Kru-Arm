@@ -902,10 +902,10 @@ function doPost(e) {
     var sheet = getSheet_();
     var data = JSON.parse(e.postData.contents);
 
-    if (data.action === 'ping') {
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'pong' })).setMimeType(ContentService.MimeType.JSON);
-    }
-
+    // A "ping" (from the app's Test Connection button) is written as a real
+    // row too, marked Mode = 'test', so clicking Test actually proves the
+    // whole write path works end-to-end. The app's cloud-sync logic already
+    // ignores rows where Mode = 'test' when restoring real student history.
     var sc = data.scores || {};
     sheet.appendRow([
       new Date(), data.student_id || '', data.student_name || '', data.room || '', data.no || '',
